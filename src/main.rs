@@ -17,8 +17,11 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    let _args = Args::parse();
+    let args = Args::parse();
     let changed_map = git::get_changed_lines()?;
+    if args.debug {
+        println!("Changed lines: {:?}", changed_map);
+    }
 
     for file in changed_map.keys() {
         let source = std::fs::read_to_string(&file)?;
