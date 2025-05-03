@@ -2,11 +2,16 @@ use anyhow::Result;
 use std::collections::HashSet;
 use tree_sitter::{Node, Tree};
 
+#[derive(PartialEq, Eq, Debug)]
+pub enum SymbolKind {
+    Function,
+}
+
 #[derive(Debug)]
 pub struct Symbol {
     pub name: String,
     pub line: usize,
-    pub kind: String,
+    pub kind: SymbolKind,
     pub is_exported: bool,
 }
 
@@ -49,7 +54,7 @@ fn walk_tree(node: Node, source: &str, symbols: &mut Vec<Symbol>, changed_lines:
                 symbols.push(Symbol {
                     name,
                     line,
-                    kind: "function".to_string(),
+                    kind: Kind::Function,
                     is_exported: is_exported(node, source),
                 });
             }
