@@ -1,8 +1,8 @@
 use git2::{DiffDelta, DiffHunk, DiffLine, DiffOptions, Repository};
 use std::collections::HashMap;
 
-pub fn get_changed_lines() -> anyhow::Result<HashMap<String, Vec<usize>>> {
-    let repo = Repository::open(".")?;
+pub fn get_changed_lines(path: &str) -> anyhow::Result<HashMap<String, Vec<usize>>> {
+    let repo = Repository::open(path)?;
     let index = repo.index()?;
     let head = repo.head()?.peel_to_tree()?;
     let diff = repo.diff_tree_to_index(Some(&head), Some(&index), Some(&mut DiffOptions::new()))?;

@@ -17,11 +17,13 @@ mod symbol_kind;
 struct Args {
     #[arg(short, long)]
     debug: bool,
+    #[arg(short, long, default_value_t = String::from("."))]
+    path: String,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let changed_map = git::get_changed_lines()?;
+    let changed_map = git::get_changed_lines(&args.path)?;
     if args.debug {
         println!("Changed lines: {:?}", changed_map);
     }
