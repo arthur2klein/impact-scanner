@@ -37,9 +37,12 @@ fn main() -> Result<()> {
 
         let changed_lines: HashSet<usize> = changed_map[file].iter().copied().collect();
         let changed_symbols =
-            symbol::extract_changed_symbols(&tree, &source, &changed_lines, &language)?;
+            symbol::extract_changed_symbols(&tree, file, &source, &changed_lines, &language)?;
 
-        println!("✏️  Changed symbols in {file:?}: {:?}", changed_symbols);
+        println!("✏️ Changed symbols in {file:?}:");
+        for symbol in changed_symbols {
+            println!("   - {symbol},");
+        }
     }
 
     Ok(())

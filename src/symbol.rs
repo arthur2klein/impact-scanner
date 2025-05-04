@@ -1,5 +1,8 @@
 use anyhow::Result;
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter},
+};
 use tree_sitter::{Node, Tree};
 
 use crate::{
@@ -11,12 +14,32 @@ use crate::{
 pub struct Symbol {
     pub name: String,
     pub line: usize,
+    pub file: String,
     pub kind: SymbolKind,
     pub is_exported: bool,
 }
 
+impl Display for Symbol {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} {:?} \x1b[1m{}\x1b[0m (l.{} in {})",
+            if self.is_exported {
+                "🔑public"
+            } else {
+                "🔒private"
+            },
+            self.kind,
+            self.name,
+            self.line,
+            self.file,
+        )
+    }
+}
+
 pub fn extract_changed_symbols(
     tree: &Tree,
+    file: &str,
     source: &str,
     changed_lines: &HashSet<usize>,
     language: &Languages,
@@ -24,12 +47,20 @@ pub fn extract_changed_symbols(
     let cursor = tree.walk();
     let mut symbols = Vec::new();
 
-    walk_tree(cursor.node(), source, &mut symbols, changed_lines, language);
+    walk_tree(
+        cursor.node(),
+        file,
+        source,
+        &mut symbols,
+        changed_lines,
+        language,
+    );
     Ok(symbols)
 }
 
 fn walk_tree(
     node: Node,
+    file: &str,
     source: &str,
     symbols: &mut Vec<Symbol>,
     changed_lines: &HashSet<usize>,
@@ -54,6 +85,7 @@ fn walk_tree(
                     symbols.push(Symbol {
                         name,
                         line,
+                        file: file.to_string(),
                         kind: SymbolKind::Function,
                         is_exported: language.is_exported(node, source),
                     });
@@ -63,6 +95,6 @@ fn walk_tree(
     }
 
     for child in node.children(&mut node.walk()) {
-        walk_tree(child, source, symbols, changed_lines, language);
+        walk_tree(child, file, source, symbols, changed_lines, language);
     }
 }
