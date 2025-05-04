@@ -54,7 +54,7 @@ fn walk_tree(node: Node, source: &str, symbols: &mut Vec<Symbol>, changed_lines:
                 symbols.push(Symbol {
                     name,
                     line,
-                    kind: Kind::Function,
+                    kind: SymbolKind::Function,
                     is_exported: is_exported(node, source),
                 });
             }
