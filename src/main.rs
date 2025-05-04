@@ -1,12 +1,15 @@
 use std::collections::HashSet;
 
+use crate::language::language::Language;
 use anyhow::Result;
 use clap::Parser;
+use language::get_language_for_file;
 
 mod git;
 mod impact;
-mod parser;
+mod language;
 mod symbol;
+mod symbol_kind;
 
 #[derive(Parser, Debug)]
 #[command(name = "impact-scanner")]
@@ -24,11 +27,17 @@ fn main() -> Result<()> {
     }
 
     for file in changed_map.keys() {
+        let language: language::Languages = get_language_for_file(file);
+        if args.debug {
+            println!("Processing {:?}", file);
+            println!("Language is {:?}", language);
+        }
         let source = std::fs::read_to_string(&file)?;
-        let tree = parser::parse_rust(&source)?;
+        let tree = language.parse(&source)?;
 
         let changed_lines: HashSet<usize> = changed_map[file].iter().copied().collect();
-        let changed_symbols = symbol::extract_changed_symbols(&tree, &source, &changed_lines)?;
+        let changed_symbols =
+            symbol::extract_changed_symbols(&tree, &source, &changed_lines, &language)?;
 
         println!("✏️  Changed symbols in {file:?}: {:?}", changed_symbols);
     }
