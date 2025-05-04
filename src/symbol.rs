@@ -92,10 +92,8 @@ fn walk_tree(
     language: &Languages,
 ) {
     for kind in SymbolKind::iter() {
-        let actual_kind = node.kind();
-        let expected_kind = language.treesitter_kind(kind);
         let expected_field = language.field_name(kind);
-        if expected_kind == actual_kind {
+        if language.has_kind(node.kind(), kind) {
             if let Some(name_node) = node.child_by_field_name(expected_field) {
                 let name = name_node
                     .utf8_text(source.as_bytes())

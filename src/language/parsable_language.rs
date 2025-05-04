@@ -24,14 +24,15 @@ pub trait ParsableLanguage {
     /// * (`String`): Field name containing the name of a given tree-sitter symbol kind.
     fn field_name(&self, kind: &SymbolKind) -> String;
 
-    /// Returns the tree-sitter kind name for a `SymbolKind`.
+    /// Checks if the given tree-sitter kind identifies a given `SymbolKind`.
     ///
     /// ## Parameters:
+    /// * `tree_sitter_kind` (`&str`): Name of the tree-sitter kind related to the given argument.
     /// * `kind` (`&symbol_kind::SymbolKind`): Kind of symbol to get the tree-sitter kind name of.
     ///
     /// ## Returns:
-    /// * (`String`): Name of the tree-sitter kind related to the given argument.
-    fn treesitter_kind(&self, kind: &SymbolKind) -> String;
+    /// * (`bool`): true iff the given tree-sitter kind correspond to the wanted kind.
+    fn has_kind(&self, tree_sitter_kind: &str, kind: &SymbolKind) -> bool;
 
     /// Parse a file as a `tree_sitter::Tree`.
     ///

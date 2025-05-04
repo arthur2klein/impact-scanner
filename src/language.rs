@@ -1,4 +1,5 @@
 use anyhow::Result;
+use parsable_language::ParsableLanguage;
 use rust::RustLanguage;
 use tree_sitter::{Node, Tree};
 use unknown::UnknownLanguage;
@@ -18,7 +19,7 @@ pub enum Languages {
     Unknown(UnknownLanguage),
 }
 
-impl parsable_language::ParsableLanguage for Languages {
+impl ParsableLanguage for Languages {
     fn is_exported(&self, node: Node, source: &str) -> bool {
         match &self {
             Languages::Rust(language) => language.is_exported(node, source),
@@ -33,10 +34,10 @@ impl parsable_language::ParsableLanguage for Languages {
         }
     }
 
-    fn treesitter_kind(&self, kind: &SymbolKind) -> String {
+    fn has_kind(&self, tree_sitter_kind: &str, kind: &SymbolKind) -> bool {
         match &self {
-            Languages::Rust(language) => language.treesitter_kind(kind),
-            Languages::Unknown(language) => language.treesitter_kind(kind),
+            Languages::Rust(language) => language.has_kind(tree_sitter_kind, kind),
+            Languages::Unknown(language) => language.has_kind(tree_sitter_kind, kind),
         }
     }
 

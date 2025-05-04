@@ -26,9 +26,9 @@ impl ParsableLanguage for RustLanguage {
         }
     }
 
-    fn treesitter_kind(&self, kind: &SymbolKind) -> String {
+    fn has_kind(&self, tree_sitter_kind: &str, kind: &SymbolKind) -> bool {
         match kind {
-            SymbolKind::Function => "function_item".to_string(),
+            SymbolKind::Function => "function_item" == tree_sitter_kind,
         }
     }
 

@@ -17,8 +17,8 @@ impl ParsableLanguage for UnknownLanguage {
         "".to_string()
     }
 
-    fn treesitter_kind(&self, _kind: &SymbolKind) -> String {
-        "".to_string()
+    fn has_kind(&self, _tree_sitter_kind: &str, _kind: &SymbolKind) -> bool {
+        false
     }
 
     fn parse(&self, _source: &str) -> Result<Tree> {
