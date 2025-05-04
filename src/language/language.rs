@@ -3,6 +3,7 @@ use tree_sitter::{Node, Tree};
 
 use crate::symbol_kind::SymbolKind;
 
+///
 pub trait Language {
     fn is_exported(&self, node: Node, source: &str) -> bool;
     fn field_name(&self, kind: &SymbolKind) -> String;

@@ -3,12 +3,12 @@ use tree_sitter::{Node, Tree};
 
 use crate::symbol_kind::SymbolKind;
 
-use super::language::Language;
+use super::parsable_language::ParsableLanguage;
 
 #[derive(Debug)]
 pub struct UnknownLanguage {}
 
-impl Language for UnknownLanguage {
+impl ParsableLanguage for UnknownLanguage {
     fn is_exported(&self, _node: Node, _source: &str) -> bool {
         false
     }

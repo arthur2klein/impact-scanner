@@ -1,6 +1,15 @@
 use git2::{DiffDelta, DiffHunk, DiffLine, DiffOptions, Repository};
 use std::collections::HashMap;
 
+/// Returns the lines that changed in a git repository.
+///
+/// ## Parameters:
+/// * `path` (`&str`): Path to the git repository.
+///
+/// ## Returns:
+/// * (`anyhow::Result<std::collections::HashMap<String, Vec<usize>>>`): Map associating file names
+/// to a list of changed lines in git repository. Line numbers are lines in the staged version of
+/// the repo.
 pub fn get_changed_lines(path: &str) -> anyhow::Result<HashMap<String, Vec<usize>>> {
     let repo = Repository::open(path)?;
     let index = repo.index()?;

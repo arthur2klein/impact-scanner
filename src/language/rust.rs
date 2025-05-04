@@ -1,6 +1,6 @@
 use crate::symbol_kind::SymbolKind;
 
-use super::language::Language;
+use super::parsable_language::ParsableLanguage;
 use anyhow::{anyhow, Result};
 use tree_sitter::{Node, Parser, Tree};
 use tree_sitter_rust::LANGUAGE as rust_language;
@@ -8,7 +8,7 @@ use tree_sitter_rust::LANGUAGE as rust_language;
 #[derive(Debug)]
 pub struct RustLanguage {}
 
-impl Language for RustLanguage {
+impl ParsableLanguage for RustLanguage {
     fn is_exported(&self, node: Node, source: &str) -> bool {
         for i in 0..node.child_count() {
             let child = node.child(i).unwrap();

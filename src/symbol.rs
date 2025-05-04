@@ -6,16 +6,29 @@ use std::{
 use tree_sitter::{Node, Tree};
 
 use crate::{
-    language::{language::Language, Languages},
+    language::{parsable_language::ParsableLanguage, Languages},
     symbol_kind::SymbolKind,
 };
 
 #[derive(Debug)]
+/// Symbol extracted from a source file.
+///
+/// ## Properties:
+/// * `name` (`String`): Name of the symbol,
+/// * `line` (`usize`): Line number where the symbol is named,
+/// * `file` (`String`): Name of the file declaring the symbol,
+/// * `kind` (`symbol_kind::SymbolKind`): Kind of symbol (eg. function),
+/// * `is_exported` (`bool`): true iff the symbol is usable from outside of the current scope.
 pub struct Symbol {
+    /// Name of the symbol.
     pub name: String,
+    /// Line number where the symbol is named.
     pub line: usize,
+    /// Name of the file declaring the symbol.
     pub file: String,
+    /// Kind of symbol (eg. function).
     pub kind: SymbolKind,
+    /// true iff the symbol is usable from outside of the current scope.
     pub is_exported: bool,
 }
 
@@ -37,6 +50,19 @@ impl Display for Symbol {
     }
 }
 
+/// Gets changed symbols from a parsed file.
+/// Will extracts symbols present at line which changed.
+///
+/// ## Parameters:
+/// * `tree` (`&tree_sitter::Tree`): File parsed with tree_sitter,
+/// * `file` (`&str`): Name of the file,
+/// * `source` (`&str`): Content of the file,
+/// * `changed_lines` (`&std::collections::HashSet<usize>`): Set of changed lines in the text,
+/// * `language` (`language::Languages`): Language of the current file.
+///
+/// ## Returns:
+/// * (`Result<Vec<Symbol>>`): List of symbol which changed. Will fail if the language was
+/// incorrect.
 pub fn extract_changed_symbols(
     tree: &Tree,
     file: &str,
@@ -46,7 +72,6 @@ pub fn extract_changed_symbols(
 ) -> Result<Vec<Symbol>> {
     let cursor = tree.walk();
     let mut symbols = Vec::new();
-
     walk_tree(
         cursor.node(),
         file,
