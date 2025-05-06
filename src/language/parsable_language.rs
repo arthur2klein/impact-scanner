@@ -42,4 +42,23 @@ pub trait ParsableLanguage {
     /// ## Returns:
     /// * (`Result<tree_sitter::Tree>`): Given file parsed by tree-sitter.
     fn parse(&self, source: &str) -> Result<Tree>;
+
+    /// Optionally returns the name associated with a node if it represents one.
+    ///
+    /// ## Parameters:
+    /// * `node` (`tree_sitter::Node`): Node to get the name of.
+    /// * `source` (`&str`): Content of the file.
+    ///
+    /// ## Returns:
+    /// * (`Option<String>`): Name of the given node, or None if given node is not a scope name.
+    fn get_name_for_node(&self, node: Node, source: &str) -> Option<String>;
+
+    /// Returns the scope to deduce from file name alone for the entirety of the file.
+    ///
+    /// ## Parameters:
+    /// * `file_path` (`&str`): Name of the file.
+    ///
+    /// ## Returns:
+    /// * (`Vec<String>`): Scope of the given file constructed from the given path.
+    fn scope_from_path(&self, file_path: &str) -> Vec<String>;
 }

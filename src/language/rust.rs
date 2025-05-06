@@ -1,3 +1,5 @@
+use std::ffi::OsStr;
+
 use crate::symbol_kind::SymbolKind;
 
 use super::parsable_language::ParsableLanguage;
@@ -39,5 +41,43 @@ impl ParsableLanguage for RustLanguage {
             .parse(source, None)
             .ok_or_else(|| anyhow!("Parse failed"))?;
         Ok(tree)
+    }
+
+    fn get_name_for_node(&self, node: Node, source: &str) -> Option<String> {
+        match node.kind() {
+            "mod_item" | "struct_item" | "enum_item" | "trait_item" | "impl_item" | "fn_item" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    return name_node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string());
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn scope_from_path(&self, file_path: &str) -> Vec<String> {
+        let path = std::path::Path::new(file_path);
+        let mut components = path
+            .components()
+            .skip_while(|c| {
+                matches!(
+                    c.as_os_str().to_str(),
+                    Some("src") | Some("tests") | Some("src-bin")
+                )
+            })
+            .collect::<Vec<_>>();
+        if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if file_stem != "mod" && file_stem != "lib" && file_stem != "main" {
+                components.pop();
+                components.push(std::path::Component::Normal(OsStr::new(file_stem)));
+            }
+        }
+        components
+            .into_iter()
+            .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+            .collect()
     }
 }

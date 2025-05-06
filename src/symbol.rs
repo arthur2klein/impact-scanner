@@ -19,6 +19,7 @@ use crate::{
 /// * `file` (`String`): Name of the file declaring the symbol,
 /// * `kind` (`symbol_kind::SymbolKind`): Kind of symbol (eg. function),
 /// * `is_exported` (`bool`): true iff the symbol is usable from outside of the current scope.
+/// * `scope` (`Vec<String>`): Hierarchical scope (e.g., modules, classes) where the symbol is defined.
 pub struct Symbol {
     /// Name of the symbol.
     pub name: String,
@@ -30,13 +31,15 @@ pub struct Symbol {
     pub kind: SymbolKind,
     /// true iff the symbol is usable from outside of the current scope.
     pub is_exported: bool,
+    /// Hierarchical scope (e.g., modules, classes) where the symbol is defined.
+    pub scope: Vec<String>,
 }
 
 impl Display for Symbol {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             formatter,
-            "{} {:?} \x1b[1m{}\x1b[0m (l.{} in {})",
+            "{} {:?} \x1b[1m{}\x1b[0m (l.{} in {}): \x1b[2m{}\x1b[0m",
             if self.is_exported {
                 "🔑public"
             } else {
@@ -46,6 +49,7 @@ impl Display for Symbol {
             self.name,
             self.line,
             self.file,
+            self.scope.join("::"),
         )
     }
 }
@@ -72,6 +76,7 @@ pub fn extract_changed_symbols(
 ) -> Result<Vec<Symbol>> {
     let cursor = tree.walk();
     let mut symbols = Vec::new();
+    let mut scope_stack = language.scope_from_path(file);
     walk_tree(
         cursor.node(),
         file,
@@ -79,6 +84,7 @@ pub fn extract_changed_symbols(
         &mut symbols,
         changed_lines,
         language,
+        &mut scope_stack,
     );
     Ok(symbols)
 }
@@ -90,7 +96,12 @@ fn walk_tree(
     symbols: &mut Vec<Symbol>,
     changed_lines: &HashSet<usize>,
     language: &Languages,
+    scope_stack: &mut Vec<String>,
 ) {
+    let new_scope = language.get_name_for_node(node, source);
+    if let Some(ref scope_name) = new_scope {
+        scope_stack.push(scope_name.to_string());
+    }
     for kind in SymbolKind::iter() {
         let expected_field = language.field_name(kind);
         if language.has_kind(node.kind(), kind) {
@@ -111,6 +122,7 @@ fn walk_tree(
                         file: file.to_string(),
                         kind: SymbolKind::Function,
                         is_exported: language.is_exported(node, source),
+                        scope: scope_stack.clone(),
                     });
                 }
             }
@@ -118,6 +130,17 @@ fn walk_tree(
     }
 
     for child in node.children(&mut node.walk()) {
-        walk_tree(child, file, source, symbols, changed_lines, language);
+        walk_tree(
+            child,
+            file,
+            source,
+            symbols,
+            changed_lines,
+            language,
+            scope_stack,
+        );
+    }
+    if new_scope.is_some() {
+        scope_stack.pop();
     }
 }

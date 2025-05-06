@@ -24,4 +24,12 @@ impl ParsableLanguage for UnknownLanguage {
     fn parse(&self, _source: &str) -> Result<Tree> {
         bail!("Unknown language")
     }
+
+    fn get_name_for_node(&self, _node: Node, _source: &str) -> Option<String> {
+        None
+    }
+
+    fn scope_from_path(&self, _file_path: &str) -> Vec<String> {
+        Vec::new()
+    }
 }

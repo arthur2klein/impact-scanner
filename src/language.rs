@@ -47,6 +47,20 @@ impl ParsableLanguage for Languages {
             Languages::Unknown(language) => language.parse(source),
         }
     }
+
+    fn get_name_for_node(&self, node: Node, source: &str) -> Option<String> {
+        match &self {
+            Languages::Rust(language) => language.get_name_for_node(node, source),
+            Languages::Unknown(language) => language.get_name_for_node(node, source),
+        }
+    }
+
+    fn scope_from_path(&self, file_path: &str) -> Vec<String> {
+        match &self {
+            Languages::Rust(language) => language.scope_from_path(file_path),
+            Languages::Unknown(language) => language.scope_from_path(file_path),
+        }
+    }
 }
 
 /// Returns the language used in a given file.
