@@ -39,7 +39,7 @@ impl Display for Symbol {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             formatter,
-            "{} {:?} \x1b[1m{}\x1b[0m (l.{} in {}): \x1b[2m{}\x1b[0m",
+            "{} {:?} \x1b[1m{}\x1b[0m ({}:{}): \x1b[2m{}\x1b[0m",
             if self.is_exported {
                 "🔑public"
             } else {
@@ -47,8 +47,8 @@ impl Display for Symbol {
             },
             self.kind,
             self.name,
-            self.line,
             self.file,
+            self.line,
             self.scope.join("::"),
         )
     }

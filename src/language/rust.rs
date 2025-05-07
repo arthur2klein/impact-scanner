@@ -12,6 +12,7 @@ pub struct RustLanguage {}
 
 impl ParsableLanguage for RustLanguage {
     fn is_exported(&self, node: Node, source: &str) -> bool {
+        let _test = 0;
         for i in 0..node.child_count() {
             let child = node.child(i).unwrap();
             if child.kind() == "visibility_modifier" {
@@ -45,8 +46,16 @@ impl ParsableLanguage for RustLanguage {
 
     fn get_name_for_node(&self, node: Node, source: &str) -> Option<String> {
         match node.kind() {
-            "mod_item" | "struct_item" | "enum_item" | "trait_item" | "impl_item" | "fn_item" => {
+            "mod_item" | "struct_item" | "enum_item" | "trait_item" | "function_item" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
+                    return name_node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string());
+                }
+            }
+            "impl_item" => {
+                if let Some(name_node) = node.child_by_field_name("type") {
                     return name_node
                         .utf8_text(source.as_bytes())
                         .ok()
