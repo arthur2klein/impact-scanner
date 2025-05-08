@@ -74,7 +74,7 @@ impl ParsableLanguage for RustLanguage {
             .skip_while(|c| {
                 matches!(
                     c.as_os_str().to_str(),
-                    Some("src") | Some("tests") | Some("src-bin")
+                    Some("src") | Some("tests") | Some("src-bin") | Some(".")
                 )
             })
             .collect::<Vec<_>>();
@@ -84,9 +84,12 @@ impl ParsableLanguage for RustLanguage {
                 components.push(std::path::Component::Normal(OsStr::new(file_stem)));
             }
         }
-        components
-            .into_iter()
-            .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        std::iter::once("crate".to_string())
+            .chain(
+                components
+                    .into_iter()
+                    .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string())),
+            )
             .collect()
     }
 }
