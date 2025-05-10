@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+pub use std::collections::HashSet;
 
 use crate::language::parsable_language::ParsableLanguage;
 use anyhow::Result;
@@ -9,6 +9,7 @@ mod git;
 mod language;
 mod symbol;
 mod symbol_kind;
+mod usage;
 
 #[derive(Parser, Debug)]
 #[command(name = "impact-scanner")]
@@ -25,12 +26,16 @@ struct Args {
     #[arg(short, long, default_value_t = String::from("."))]
     /// Path to the project to analyze.
     path: String,
+    #[arg(short, long)]
+    /// Show usage of symbols
+    usage: bool,
 }
 
 /// Get changed symbols in the given file.
 ///
 /// ## Parameters:
 /// * `file` (`&str`): Name of the file,
+/// * `language` (`&language::Languages`): Language of the file,
 /// * `changed_lines` (`&Vec<usize>`): List of lines with staged changes in the file,
 /// * `debug` (`bool`): true iff more information should be displayed.
 ///
@@ -38,10 +43,10 @@ struct Args {
 /// * (`Result<Vec<symbol::Symbol>>`): List of symbols that changed in the given file.
 fn symbols_from_changes(
     file: &str,
+    language: &language::Languages,
     changed_lines: &Vec<usize>,
     debug: bool,
 ) -> Result<Vec<symbol::Symbol>> {
-    let language: language::Languages = get_language_for_file(file);
     if debug {
         println!("Processing {:?}", file);
         println!("Language is {:?}", language);
@@ -68,11 +73,16 @@ fn main() -> Result<()> {
     }
 
     for file in changed_map.keys() {
-        match symbols_from_changes(file, &changed_map[file], args.debug) {
+        let language: language::Languages = get_language_for_file(file);
+        match symbols_from_changes(file, &language, &changed_map[file], args.debug) {
             Ok(changed_symbols) => {
                 println!("✏️ Changed symbols in {file:?}:");
                 for symbol in changed_symbols {
                     println!("   - {symbol},");
+                    if args.usage {
+                        let usage = usage::find_symbol_usages(&args.path, &symbol, &language);
+                        eprintln!("DEBUGPRINT[30]: main.rs:79: usage={:#?}", usage);
+                    }
                 }
             }
             Err(error) => println!("❌ File {file:?} gives error {error:?}"),
