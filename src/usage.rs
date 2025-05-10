@@ -101,10 +101,18 @@ fn process_scoped_identifier(
 ) -> Result<()> {
     if let Some(path_node) = node.child_by_field_name("path") {
         match path_node.kind() {
-            "_path" => process_path(node, path, source, language, imports)?,
-            "bracketed_type" => process_bracketed_type(node, path, source, language, imports)?,
+            "self" => process_self(path_node, path, source, language, imports)?,
+            "metavariable" => process_metavariable(path_node, source, imports)?,
+            "super" => process_super(path, language, imports)?,
+            "crate" => process_crate(imports)?,
+            "identifier" => process_identifier(path_node, source, imports)?,
+            "scoped_identifier" => {
+                process_scoped_identifier(path_node, path, source, language, imports)?
+            }
+            "_reserved_identifier" => process_identifier(path_node, source, imports)?,
+            "bracketed_type" => process_bracketed_type(path_node, path, source, language, imports)?,
             "generic_type" => {
-                process_generic_type_with_turbofish(node, path, source, language, imports)?
+                process_generic_type_with_turbofish(path_node, path, source, language, imports)?
             }
             _ => bail!("path node of a scoped identifier has invalid kind"),
         }
@@ -113,7 +121,7 @@ fn process_scoped_identifier(
         bail!("field name `name` not found for a scoped identifier")
     };
     match name_node.kind() {
-        "identifier" => process_identifier(node, source, imports),
+        "identifier" => process_identifier(name_node, source, imports),
         "super" => process_super(path, language, imports),
         _ => bail!("name node of a scoped identifier has invalid kind"),
     }
@@ -290,7 +298,8 @@ fn process_use_list(
     let cloned: Vec<Import> = imports.iter().cloned().collect();
     imports.clear();
     for child in node.children(&mut cursor) {
-        if child.kind() == "_use_clause" {
+        let kind = child.kind();
+        if kind != "{" && kind != "}" && kind != "," {
             let mut imports_part = cloned.iter().cloned().collect();
             process_use_clause(child, path, source, language, &mut imports_part)?;
             imports.extend(imports_part);
@@ -314,7 +323,13 @@ fn process_use_clause(
     imports: &mut Vec<Import>,
 ) -> Result<()> {
     match node.kind() {
-        "_path" => process_path(node, path, source, language, imports),
+        "self" => process_self(node, path, source, language, imports),
+        "metavariable" => process_metavariable(node, source, imports),
+        "super" => process_super(path, language, imports),
+        "crate" => process_crate(imports),
+        "identifier" => process_identifier(node, source, imports),
+        "scoped_identifier" => process_scoped_identifier(node, path, source, language, imports),
+        "_reserved_identifier" => process_identifier(node, source, imports),
         "use_as_clause" => process_use_as_clause(node, path, source, language, imports),
         "use_list" => process_use_list(node, path, source, language, imports),
         "scoped_use_list" => process_scoped_use_list(node, path, source, language, imports),
@@ -358,14 +373,26 @@ pub fn extract_use_map(
     source: &str,
     use_map: &mut HashMap<String, Vec<String>>,
     language: &Languages,
-) {
+) -> Result<()> {
     if node.kind() == "use_declaration" {
-        let imports = process_use_declaration(node, path, source, language);
-        eprintln!("DEBUGPRINT[60]: usage.rs:353: imports={:#?}", imports);
+        for import in process_use_declaration(node, path, source, language)? {
+            use_map.insert(
+                import.alias.unwrap_or(
+                    import
+                        .path
+                        .iter()
+                        .last()
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                ),
+                import.path,
+            );
+        }
     }
     for child in node.named_children(&mut node.walk()) {
-        extract_use_map(child, path, file, source, use_map, language);
+        extract_use_map(child, path, file, source, use_map, language)?;
     }
+    Ok(())
 }
 
 pub fn find_symbol_usages(project_root: &str, symbol: &Symbol, language: &Languages) -> Vec<Usage> {
@@ -389,11 +416,11 @@ pub fn find_symbol_usages(project_root: &str, symbol: &Symbol, language: &Langua
 
         let path_string = path.to_str().unwrap_or_default();
         eprintln!(
-            "DEBUGPRINT[46]: usage.rs:128: path_string={:#?}",
+            "DEBUGPRINT[64]: usage.rs:417: path_string={:#?}",
             path_string
         );
         let mut use_map = HashMap::new();
-        extract_use_map(
+        let _ = extract_use_map(
             root_node,
             &path_string,
             path_string,
@@ -401,7 +428,7 @@ pub fn find_symbol_usages(project_root: &str, symbol: &Symbol, language: &Langua
             &mut use_map,
             &language,
         );
-        eprintln!("DEBUGPRINT[45]: usage.rs:192: use_map={:#?}", use_map);
+        eprintln!("DEBUGPRINT[65]: usage.rs:425: use_map={:#?}", use_map);
 
         let mut cursor = root_node.walk();
         let mut stack = vec![root_node];
