@@ -169,9 +169,9 @@ pub fn extract_changed_symbols<'a>(
                 let ending_row = node.end_position().row;
                 (starting_row <= changed_line) && (changed_line <= ending_row)
             }) {
-                None
-            } else {
                 language.get_name_node_of_symbol(node)
+            } else {
+                None
             }
         }),
     )
