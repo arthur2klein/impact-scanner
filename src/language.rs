@@ -27,20 +27,6 @@ impl ParsableLanguage for Languages {
         }
     }
 
-    fn field_name(&self, kind: &SymbolKind) -> String {
-        match &self {
-            Languages::Rust(language) => language.field_name(kind),
-            Languages::Unknown(language) => language.field_name(kind),
-        }
-    }
-
-    fn has_kind(&self, tree_sitter_kind: &str, kind: &SymbolKind) -> bool {
-        match &self {
-            Languages::Rust(language) => language.has_kind(tree_sitter_kind, kind),
-            Languages::Unknown(language) => language.has_kind(tree_sitter_kind, kind),
-        }
-    }
-
     fn parse(&self, source: &str) -> Result<Tree> {
         match &self {
             Languages::Rust(language) => language.parse(source),
@@ -48,10 +34,20 @@ impl ParsableLanguage for Languages {
         }
     }
 
-    fn get_name_for_node(&self, node: Node, source: &str) -> Option<String> {
+    fn get_scope_name_for_node(&self, node: Node, source: &str) -> Option<String> {
         match &self {
-            Languages::Rust(language) => language.get_name_for_node(node, source),
-            Languages::Unknown(language) => language.get_name_for_node(node, source),
+            Languages::Rust(language) => language.get_scope_name_for_node(node, source),
+            Languages::Unknown(language) => language.get_scope_name_for_node(node, source),
+        }
+    }
+
+    fn get_name_node_of_symbol<'a>(
+        &self,
+        node: &Node<'a>,
+    ) -> Option<(Node<'a>, &'static SymbolKind)> {
+        match &self {
+            Languages::Rust(language) => language.get_name_node_of_symbol(node),
+            Languages::Unknown(language) => language.get_name_node_of_symbol(node),
         }
     }
 

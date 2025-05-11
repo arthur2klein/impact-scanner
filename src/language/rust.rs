@@ -23,18 +23,6 @@ impl ParsableLanguage for RustLanguage {
         false
     }
 
-    fn field_name(&self, kind: &SymbolKind) -> String {
-        match kind {
-            SymbolKind::Function => "name".to_string(),
-        }
-    }
-
-    fn has_kind(&self, tree_sitter_kind: &str, kind: &SymbolKind) -> bool {
-        match kind {
-            SymbolKind::Function => "function_item" == tree_sitter_kind,
-        }
-    }
-
     fn parse(&self, source: &str) -> Result<Tree> {
         let mut parser = Parser::new();
         parser.set_language(&rust_language.into())?;
@@ -44,7 +32,7 @@ impl ParsableLanguage for RustLanguage {
         Ok(tree)
     }
 
-    fn get_name_for_node(&self, node: Node, source: &str) -> Option<String> {
+    fn get_scope_name_for_node(&self, node: Node, source: &str) -> Option<String> {
         match node.kind() {
             "mod_item" | "struct_item" | "enum_item" | "trait_item" | "function_item" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
@@ -63,6 +51,26 @@ impl ParsableLanguage for RustLanguage {
                 }
             }
             _ => {}
+        }
+        None
+    }
+
+    fn get_name_node_of_symbol<'a>(
+        &self,
+        node: &Node<'a>,
+    ) -> Option<(Node<'a>, &'static SymbolKind)> {
+        for kind in SymbolKind::iter() {
+            let expected_field = match kind {
+                SymbolKind::Function => "name".to_string(),
+            };
+            let has_kind = match kind {
+                SymbolKind::Function => "function_item" == node.kind(),
+            };
+            if has_kind {
+                if let Some(name_node) = node.child_by_field_name(expected_field) {
+                    return Some((name_node, kind));
+                }
+            }
         }
         None
     }

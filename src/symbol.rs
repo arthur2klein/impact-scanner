@@ -54,46 +54,36 @@ impl Display for Symbol {
     }
 }
 
-fn walk_tree<F>(
-    node: Node,
+fn walk_tree<'a, F>(
+    node: Node<'a>,
     file: &str,
     source: &str,
     symbols: &mut Vec<Symbol>,
     language: &Languages,
     scope_stack: &mut Vec<String>,
-    condition: &F,
+    get_name_and_kind_if_interesting: &F,
 ) where
-    F: Fn(&Node) -> bool,
+    F: Fn(&Node<'a>) -> Option<(Node<'a>, &'static SymbolKind)>,
 {
-    let new_scope = language.get_name_for_node(node, source);
+    let new_scope = language.get_scope_name_for_node(node, source);
     if let Some(ref scope_name) = new_scope {
         scope_stack.push(scope_name.to_string());
     }
-    let mut processed = false;
-    for kind in SymbolKind::iter() {
-        let expected_field = language.field_name(kind);
-        if language.has_kind(node.kind(), kind) {
-            processed = true;
-            if let Some(name_node) = node.child_by_field_name(expected_field) {
-                let name = name_node
-                    .utf8_text(source.as_bytes())
-                    .unwrap_or("<unknown>")
-                    .to_string();
-                let line = name_node.start_position().row + 1;
-                if condition(&node) {
-                    symbols.push(Symbol {
-                        name,
-                        line,
-                        file: file.to_string(),
-                        kind: SymbolKind::Function,
-                        is_exported: language.is_exported(node, source),
-                        scope: scope_stack.clone(),
-                    });
-                }
-            }
-        }
-    }
-    if !processed {
+    if let Some((name_node, kind)) = get_name_and_kind_if_interesting(&node) {
+        let name = name_node
+            .utf8_text(source.as_bytes())
+            .unwrap_or("<unknown>")
+            .to_string();
+        let line = name_node.start_position().row + 1;
+        symbols.push(Symbol {
+            name,
+            line,
+            file: file.to_string(),
+            kind: *kind,
+            is_exported: language.is_exported(node, source),
+            scope: scope_stack.clone(),
+        });
+    } else {
         for child in node.children(&mut node.walk()) {
             walk_tree(
                 child,
@@ -102,7 +92,7 @@ fn walk_tree<F>(
                 symbols,
                 language,
                 scope_stack,
-                condition,
+                get_name_and_kind_if_interesting,
             );
         }
     }
@@ -118,19 +108,20 @@ fn walk_tree<F>(
 /// * `file` (`&str`): Name of the file,
 /// * `source` (`&str`): Content of the file,
 /// * `language` (`language::Languages`): Language of the current file,
-/// * `condition` (`Fn(&Node) -> bool`): Condition for a symbol to be extracted.
+/// * `get_name_and_kind_if_interesting` (`Fn(&Node) -> Option<(Node, &SymbolKind)>`): None if not
+///   an interesting node, else node with the name of the given node, and kind of symbol extracted.
 ///
 /// ## Returns:
 /// * (`Result<Vec<Symbol>>`): List of symbol which matching the closure.
-pub fn extract_symbols<F>(
-    tree: &Tree,
+pub fn extract_symbols<'a, F>(
+    tree: &'a Tree,
     file: &str,
     source: &str,
     language: &Languages,
-    condition: F,
+    get_name_and_kind_if_interesting: F,
 ) -> Result<Vec<Symbol>>
 where
-    F: Fn(&Node) -> bool,
+    F: Fn(&Node<'a>) -> Option<(Node<'a>, &'static SymbolKind)>,
 {
     let cursor = tree.walk();
     let mut symbols = Vec::new();
@@ -142,7 +133,7 @@ where
         &mut symbols,
         language,
         &mut scope_stack,
-        &condition,
+        &get_name_and_kind_if_interesting,
     );
     Ok(symbols)
 }
@@ -160,8 +151,8 @@ where
 /// ## Returns:
 /// * (`Result<Vec<Symbol>>`): List of symbol which changed. Will fail if the language was
 /// incorrect.
-pub fn extract_changed_symbols(
-    tree: &Tree,
+pub fn extract_changed_symbols<'a>(
+    tree: &'a Tree,
     file: &str,
     source: &str,
     changed_lines: &HashSet<usize>,
@@ -172,12 +163,16 @@ pub fn extract_changed_symbols(
         file,
         source,
         language,
-        &(|node: &Node| {
-            changed_lines.iter().any(|&changed_line| {
+        &(|node: &Node<'a>| {
+            if changed_lines.iter().any(|&changed_line| {
                 let starting_row = node.start_position().row;
                 let ending_row = node.end_position().row;
                 (starting_row <= changed_line) && (changed_line <= ending_row)
-            })
+            }) {
+                None
+            } else {
+                language.get_name_node_of_symbol(node)
+            }
         }),
     )
 }

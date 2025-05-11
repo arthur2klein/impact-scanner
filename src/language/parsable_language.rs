@@ -15,25 +15,6 @@ pub trait ParsableLanguage {
     /// * (`bool`): true iff the symbol is public.
     fn is_exported(&self, node: Node, source: &str) -> bool;
 
-    /// Returns the tree-sitter field name used to find the name of a given symbol kind.
-    ///
-    /// ## Parameters:
-    /// * `kind` (`&symbol_kind::SymbolKind`): Kind of symbol to get the name of.
-    ///
-    /// ## Returns:
-    /// * (`String`): Field name containing the name of a given tree-sitter symbol kind.
-    fn field_name(&self, kind: &SymbolKind) -> String;
-
-    /// Checks if the given tree-sitter kind identifies a given `SymbolKind`.
-    ///
-    /// ## Parameters:
-    /// * `tree_sitter_kind` (`&str`): Name of the tree-sitter kind related to the given argument.
-    /// * `kind` (`&symbol_kind::SymbolKind`): Kind of symbol to get the tree-sitter kind name of.
-    ///
-    /// ## Returns:
-    /// * (`bool`): true iff the given tree-sitter kind correspond to the wanted kind.
-    fn has_kind(&self, tree_sitter_kind: &str, kind: &SymbolKind) -> bool;
-
     /// Parse a file as a `tree_sitter::Tree`.
     ///
     /// ## Parameters:
@@ -51,7 +32,21 @@ pub trait ParsableLanguage {
     ///
     /// ## Returns:
     /// * (`Option<String>`): Name of the given node, or None if given node is not a scope name.
-    fn get_name_for_node(&self, node: Node, source: &str) -> Option<String>;
+    fn get_scope_name_for_node(&self, node: Node, source: &str) -> Option<String>;
+
+    /// Returns the node containing the name of the given symbol, if the symbol is used by the
+    /// program.
+    ///
+    /// ## Parameters:
+    /// * `node` (`tree_sitter::Node`): Node to get the name node of.
+    ///
+    /// ## Returns:
+    /// * (`Option<(Node, &SymbolKind)>`): None if the symbol is not interesting, else node
+    ///   containing the name of the given node, and kind of symbol represented by the node.
+    fn get_name_node_of_symbol<'a>(
+        &self,
+        node: &Node<'a>,
+    ) -> Option<(Node<'a>, &'static SymbolKind)>;
 
     /// Returns the scope to deduce from file name alone for the entirety of the file.
     ///

@@ -1,6 +1,6 @@
 use std::slice::Iter;
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 /// Kind of symbols to care about in source files.
 pub enum SymbolKind {
     /// Includes every named callable.
