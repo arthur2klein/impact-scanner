@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use parsable_language::ParsableLanguage;
 use rust::RustLanguage;
@@ -51,7 +53,7 @@ impl ParsableLanguage for Languages {
         }
     }
 
-    fn scope_from_path(&self, file_path: &str) -> Vec<String> {
+    fn scope_from_path(&self, file_path: &PathBuf) -> Vec<String> {
         match &self {
             Languages::Rust(language) => language.scope_from_path(file_path),
             Languages::Unknown(language) => language.scope_from_path(file_path),
@@ -63,14 +65,14 @@ impl ParsableLanguage for Languages {
 /// Will use the file extension.
 ///
 /// ## Parameters:
-/// * `file_name` (`&str`): Name of the file to get the language from.
+/// * `file_name` (`&std::path::PathBuf`): Name of the file to get the language from.
 ///
 /// ## Returns:
 /// * (`Languages`): Language identified in the given file. If identification fails,
 /// `Languages::Unknown` will be returned.
-pub fn get_language_for_file(file_name: &str) -> Languages {
-    match file_name.rsplit_once(".") {
-        Some((_, "rs")) => Languages::Rust(RustLanguage {}),
+pub fn get_language_for_file(file_name: &PathBuf) -> Languages {
+    match file_name.extension().and_then(|v| v.to_str()) {
+        Some("rs") => Languages::Rust(RustLanguage {}),
         _ => Languages::Unknown(UnknownLanguage {}),
     }
 }

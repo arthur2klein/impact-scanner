@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::{bail, Result};
 use tree_sitter::{Node, Tree};
 
@@ -28,7 +30,7 @@ impl ParsableLanguage for UnknownLanguage {
         None
     }
 
-    fn scope_from_path(&self, _file_path: &str) -> Vec<String> {
+    fn scope_from_path(&self, _file_path: &PathBuf) -> Vec<String> {
         Vec::new()
     }
 }

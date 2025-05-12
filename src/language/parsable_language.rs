@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use tree_sitter::{Node, Tree};
 
@@ -51,9 +53,9 @@ pub trait ParsableLanguage {
     /// Returns the scope to deduce from file name alone for the entirety of the file.
     ///
     /// ## Parameters:
-    /// * `file_path` (`&str`): Name of the file.
+    /// * `file_path` (`&std::path::PathBuf`): Name of the file.
     ///
     /// ## Returns:
     /// * (`Vec<String>`): Scope of the given file constructed from the given path.
-    fn scope_from_path(&self, file_path: &str) -> Vec<String>;
+    fn scope_from_path(&self, file_path: &PathBuf) -> Vec<String>;
 }

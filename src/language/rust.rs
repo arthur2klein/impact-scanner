@@ -1,4 +1,7 @@
-use std::ffi::OsStr;
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use crate::symbol_kind::SymbolKind;
 
@@ -75,9 +78,8 @@ impl ParsableLanguage for RustLanguage {
         None
     }
 
-    fn scope_from_path(&self, file_path: &str) -> Vec<String> {
-        let path = std::path::Path::new(file_path);
-        let mut components = path
+    fn scope_from_path(&self, file_path: &PathBuf) -> Vec<String> {
+        let mut components = file_path
             .components()
             .skip_while(|c| {
                 matches!(
@@ -86,7 +88,7 @@ impl ParsableLanguage for RustLanguage {
                 )
             })
             .collect::<Vec<_>>();
-        if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
+        if let Some(file_stem) = file_path.file_stem().and_then(|s| s.to_str()) {
             if file_stem != "mod" && file_stem != "lib" && file_stem != "main" {
                 components.pop();
                 components.push(std::path::Component::Normal(OsStr::new(file_stem)));

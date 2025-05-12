@@ -1,4 +1,5 @@
 pub use std::collections::HashSet;
+use std::path::PathBuf;
 
 use crate::language::parsable_language::ParsableLanguage;
 use anyhow::Result;
@@ -34,7 +35,7 @@ struct Args {
 /// Get changed symbols in the given file.
 ///
 /// ## Parameters:
-/// * `file` (`&str`): Name of the file,
+/// * `file` (`&std::path::PathBuf`): Name of the file,
 /// * `language` (`&language::Languages`): Language of the file,
 /// * `changed_lines` (`&Vec<usize>`): List of lines with staged changes in the file,
 /// * `debug` (`bool`): true iff more information should be displayed.
@@ -42,7 +43,7 @@ struct Args {
 /// ## Returns:
 /// * (`Result<Vec<symbol::Symbol>>`): List of symbols that changed in the given file.
 fn symbols_from_changes(
-    file: &str,
+    file: &PathBuf,
     language: &language::Languages,
     changed_lines: &Vec<usize>,
     debug: bool,
@@ -67,7 +68,7 @@ fn symbols_from_changes(
 /// - (`Result<()>`): Ok if no critical error, else description of the error.
 fn main() -> Result<()> {
     let args = Args::parse();
-    let changed_map = git::get_changed_lines(&args.path)?;
+    let changed_map = git::get_changed_lines(&PathBuf::from(&args.path))?;
     if args.debug {
         println!("Changed lines: {:?}", changed_map);
     }
@@ -80,7 +81,11 @@ fn main() -> Result<()> {
                 for symbol in changed_symbols {
                     println!("   - {symbol},");
                     if args.usage {
-                        let usage = usage::find_symbol_usages(&args.path, &symbol, &language);
+                        let usage = usage::find_symbol_usages(
+                            &PathBuf::from(&args.path),
+                            &symbol,
+                            &language,
+                        );
                         eprintln!("DEBUGPRINT[30]: main.rs:79: usage={:#?}", usage);
                     }
                 }

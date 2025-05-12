@@ -1,6 +1,6 @@
 use anyhow::{self, bail, Result};
-use std::collections::HashMap;
 use std::fs;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
     language::{parsable_language::ParsableLanguage, Languages},
@@ -13,13 +13,13 @@ use walkdir::WalkDir;
 /// Usage of a symbol in a project.
 ///
 /// ## Properties:
-/// * `file` (`String`): Name of the file the symbol is used in,
+/// * `file` (`std::path::PathBuf`): Name of the file the symbol is used in,
 /// * `line` (`usize`): Line number where the symbol is used.
 pub struct Usage {
     /// Line number where the symbol is named.
     pub line: usize,
     /// Name of the file declaring the symbol.
-    pub file: String,
+    pub file: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +38,22 @@ pub struct Import {
     pub is_exported: bool,
 }
 
+impl Import {
+    /// Name of the imported symbol, taking into account aliases.
+    ///
+    /// ## Returns:
+    /// * (`String`): Name of the imported symbol.
+    fn name(&self) -> String {
+        self.alias.clone().unwrap_or(
+            self.path
+                .iter()
+                .last()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        )
+    }
+}
+
 //generic_type_with_turbofish: $ => seq(
 //  field('type', choice(
 //    $._type_identifier,
@@ -48,7 +64,7 @@ pub struct Import {
 //),
 fn process_generic_type_with_turbofish(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
@@ -63,26 +79,6 @@ fn process_generic_type_with_turbofish(
     }
 }
 
-//bracketed_type: $ => seq(
-//  '<',
-//  choice(
-//    $._type,
-//    $.qualified_type,
-//  ),
-//  '>',
-//),
-//
-//Ignored
-fn process_bracketed_type(
-    _node: Node,
-    _path: &str,
-    _source: &str,
-    _language: &Languages,
-    _imports: &mut Vec<Import>,
-) -> Result<()> {
-    Ok(())
-}
-
 //scoped_identifier: $ => seq(
 //  field('path', optional(choice(
 //    $._path,
@@ -94,14 +90,14 @@ fn process_bracketed_type(
 //),
 fn process_scoped_identifier(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
 ) -> Result<()> {
     if let Some(path_node) = node.child_by_field_name("path") {
         match path_node.kind() {
-            "self" => process_self(path_node, path, source, language, imports)?,
+            "self" => (),
             "metavariable" => process_metavariable(path_node, source, imports)?,
             "super" => process_super(path, language, imports)?,
             "crate" => process_crate(imports)?,
@@ -110,7 +106,7 @@ fn process_scoped_identifier(
                 process_scoped_identifier(path_node, path, source, language, imports)?
             }
             "_reserved_identifier" => process_identifier(path_node, source, imports)?,
-            "bracketed_type" => process_bracketed_type(path_node, path, source, language, imports)?,
+            "bracketed_type" => (),
             "generic_type" => {
                 process_generic_type_with_turbofish(path_node, path, source, language, imports)?
             }
@@ -136,23 +132,12 @@ fn process_crate(imports: &mut Vec<Import>) -> Result<()> {
 }
 
 //super: _ => 'super',
-fn process_super(path: &str, language: &Languages, imports: &mut Vec<Import>) -> Result<()> {
+fn process_super(path: &PathBuf, language: &Languages, imports: &mut Vec<Import>) -> Result<()> {
     let mut from_path = language.scope_from_path(path);
     from_path.pop();
     for import in imports {
         import.path.extend(from_path.clone());
     }
-    Ok(())
-}
-
-//self: _ => 'self',
-fn process_self(
-    _node: Node,
-    _path: &str,
-    _source: &str,
-    _language: &Languages,
-    _imports: &mut Vec<Import>,
-) -> Result<()> {
     Ok(())
 }
 
@@ -177,13 +162,13 @@ fn process_metavariable(node: Node, source: &str, imports: &mut Vec<Import>) -> 
 //  ),
 fn process_path(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
 ) -> Result<()> {
     match node.kind() {
-        "self" => process_self(node, path, source, language, imports),
+        "self" => Ok(()),
         "metavariable" => process_metavariable(node, source, imports),
         "super" => process_super(path, language, imports),
         "crate" => process_crate(imports),
@@ -215,7 +200,7 @@ fn get_value_of_identifier(node: Node, source: &str) -> Result<String> {
 //   ),
 fn process_use_wildcard(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
@@ -239,7 +224,7 @@ fn process_use_wildcard(
 //   ),
 fn process_use_as_clause(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
@@ -265,7 +250,7 @@ fn process_use_as_clause(
 //   ),
 fn process_scoped_use_list(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
@@ -289,7 +274,7 @@ fn process_scoped_use_list(
 //   ),
 fn process_use_list(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
@@ -317,13 +302,13 @@ fn process_use_list(
 //   ),
 fn process_use_clause(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
     imports: &mut Vec<Import>,
 ) -> Result<()> {
     match node.kind() {
-        "self" => process_self(node, path, source, language, imports),
+        "self" => Ok(()),
         "metavariable" => process_metavariable(node, source, imports),
         "super" => process_super(path, language, imports),
         "crate" => process_crate(imports),
@@ -346,7 +331,7 @@ fn process_use_clause(
 //   ),
 fn process_use_declaration(
     node: Node,
-    path: &str,
+    path: &PathBuf,
     source: &str,
     language: &Languages,
 ) -> Result<Vec<Import>> {
@@ -368,34 +353,64 @@ fn process_use_declaration(
 
 pub fn extract_use_map(
     node: Node,
-    path: &str,
-    file: &str,
+    path: &PathBuf,
     source: &str,
-    use_map: &mut HashMap<String, Vec<String>>,
+    use_map: &mut HashMap<String, Import>,
     language: &Languages,
 ) -> Result<()> {
     if node.kind() == "use_declaration" {
         for import in process_use_declaration(node, path, source, language)? {
-            use_map.insert(
-                import.alias.unwrap_or(
-                    import
-                        .path
-                        .iter()
-                        .last()
-                        .map(|v| v.to_string())
-                        .unwrap_or_default(),
-                ),
-                import.path,
-            );
+            use_map.insert(import.name(), import);
         }
     }
     for child in node.named_children(&mut node.walk()) {
-        extract_use_map(child, path, file, source, use_map, language)?;
+        extract_use_map(child, path, source, use_map, language)?;
     }
     Ok(())
 }
 
-pub fn find_symbol_usages(project_root: &str, symbol: &Symbol, language: &Languages) -> Vec<Usage> {
+pub fn extract_identifiers(
+    node: Node,
+    path: &PathBuf,
+    source: &str,
+    language: &Languages,
+) -> Result<Vec<Import>> {
+    let mut result = Vec::new();
+    let mut processed = false;
+    if node.kind() == "scoped_identifier" {
+        let mut symbol = vec![Import {
+            alias: None,
+            path: Vec::new(),
+            is_exported: false,
+        }];
+        process_scoped_identifier(node, path, source, language, &mut symbol)?;
+        result.extend(symbol);
+        processed = true;
+    }
+    if node.kind() == "identifier" {
+        let mut symbol = vec![Import {
+            alias: None,
+            path: Vec::new(),
+            is_exported: false,
+        }];
+        process_identifier(node, source, &mut symbol)?;
+        result.extend(symbol);
+        processed = true;
+    }
+    if !processed {
+        for child in node.named_children(&mut node.walk()) {
+            result.extend(extract_identifiers(child, path, source, language)?);
+        }
+    }
+    Ok(result)
+}
+
+pub fn find_symbol_usages(
+    project_root: &PathBuf,
+    symbol: &Symbol,
+    language: &Languages,
+) -> Vec<Usage> {
+    eprintln!("DEBUGPRINT[68]: usage.rs:367: symbol={:#?}", symbol);
     let mut usages: Vec<Usage> = vec![];
 
     for entry in WalkDir::new(project_root)
@@ -414,67 +429,51 @@ pub fn find_symbol_usages(project_root: &str, symbol: &Symbol, language: &Langua
         };
         let root_node = tree.root_node();
 
-        let path_string = path.to_str().unwrap_or_default();
         eprintln!(
             "DEBUGPRINT[64]: usage.rs:417: path_string={:#?}",
-            path_string
+            path.to_str().unwrap_or_default()
         );
         let mut use_map = HashMap::new();
-        let _ = extract_use_map(
+        if let Err(error) = extract_use_map(
             root_node,
-            &path_string,
-            path_string,
+            &path.to_path_buf(),
             &source_code,
             &mut use_map,
             &language,
-        );
-        eprintln!("DEBUGPRINT[65]: usage.rs:425: use_map={:#?}", use_map);
+        ) {
+            println!("Error: {:?}", error);
+        }
 
-        let mut cursor = root_node.walk();
-        let mut stack = vec![root_node];
-
-        while let Some(node) = stack.pop() {
-            match node.kind() {
-                "call_expression" => {
-                    if let Some(fn_node) = node.child_by_field_name("function") {
-                        let name = &source_code[fn_node.start_byte()..fn_node.end_byte()];
-                        if name == symbol.name {
-                            if let Some(use_path) = use_map.get(name) {
-                                if use_path.contains(&symbol.name) {
-                                    usages.push(Usage {
-                                        file: use_path.join("::"),
-                                        line: node.start_position().row + 1,
-                                    });
-                                }
-                            } else if symbol.file.ends_with(
-                                path.file_name().unwrap_or_default().to_str().unwrap_or(""),
-                            ) {
-                                usages.push(Usage {
-                                    file: path.to_string_lossy().into_owned(),
-                                    line: node.start_position().row + 1,
-                                });
-                            }
-                        }
-                    }
-                }
-                "use_declaration" => {
-                    let path_str = path.to_string_lossy().into_owned();
-                    if fs::canonicalize(&symbol.file).unwrap_or_default()
-                        != fs::canonicalize(&path).unwrap_or_default()
-                    {
-                        let text = &source_code[node.start_byte()..node.end_byte()];
-                        if text.contains(&symbol.name) {
-                            usages.push(Usage {
-                                file: path_str,
-                                line: node.start_position().row + 1,
-                            });
-                        }
-                    }
-                }
-                _ => {}
+        let Ok(mut used_symbols) = extract_identifiers( tree.root_node(), &path.to_path_buf(), &source_code, language) else {
+            println!("Error");
+            return Vec::new();
+        };
+        for used_symbol in used_symbols.iter_mut() {
+            if let Some(import) = used_symbol.path.first().and_then(|v| use_map.get(v)) {
+                let mut to_add = import.path.clone();
+                to_add.pop();
+                used_symbol.path.splice(0..0, to_add);
             }
-            for child in node.children(&mut cursor) {
-                stack.push(child);
+            let symbol_path = symbol.file.as_path();
+            if symbol_path
+                .canonicalize()
+                .unwrap_or(symbol_path.to_path_buf())
+                == path.canonicalize().unwrap_or(path.to_path_buf())
+            {
+                println!(
+                    "{:?}: would be used from {:?} due to being from {:?}",
+                    used_symbol.name(),
+                    symbol.scope,
+                    path.to_str().unwrap_or("<invalid>"),
+                );
+            } else if symbol.name == used_symbol.name() {
+                println!("{:?}", use_map);
+                println!(
+                    "{:?}: {:?} would be compared to {:?}",
+                    used_symbol.name(),
+                    symbol.scope,
+                    used_symbol.path
+                );
             }
         }
     }

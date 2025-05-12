@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::{
     collections::HashSet,
     fmt::{Display, Formatter},
+    path::PathBuf,
 };
 use tree_sitter::{Node, Tree};
 
@@ -16,7 +17,7 @@ use crate::{
 /// ## Properties:
 /// * `name` (`String`): Name of the symbol,
 /// * `line` (`usize`): Line number where the symbol is named,
-/// * `file` (`String`): Name of the file declaring the symbol,
+/// * `file` (`std::path::PathBuf`): Name of the file declaring the symbol,
 /// * `kind` (`symbol_kind::SymbolKind`): Kind of symbol (eg. function),
 /// * `is_exported` (`bool`): true iff the symbol is usable from outside of the current scope.
 /// * `scope` (`Vec<String>`): Hierarchical scope (e.g., modules, classes) where the symbol is defined.
@@ -26,7 +27,7 @@ pub struct Symbol {
     /// Line number where the symbol is named.
     pub line: usize,
     /// Name of the file declaring the symbol.
-    pub file: String,
+    pub file: PathBuf,
     /// Kind of symbol (eg. function).
     pub kind: SymbolKind,
     /// true iff the symbol is usable from outside of the current scope.
@@ -47,7 +48,7 @@ impl Display for Symbol {
             },
             self.kind,
             self.name,
-            self.file,
+            self.file.to_str().unwrap_or("<invalid>"),
             self.line,
             self.scope.join("::"),
         )
@@ -56,7 +57,7 @@ impl Display for Symbol {
 
 fn walk_tree<'a, F>(
     node: Node<'a>,
-    file: &str,
+    file: &PathBuf,
     source: &str,
     symbols: &mut Vec<Symbol>,
     language: &Languages,
@@ -78,7 +79,7 @@ fn walk_tree<'a, F>(
         symbols.push(Symbol {
             name,
             line,
-            file: file.to_string(),
+            file: file.clone(),
             kind: *kind,
             is_exported: language.is_exported(node, source),
             scope: scope_stack.clone(),
@@ -105,9 +106,10 @@ fn walk_tree<'a, F>(
 ///
 /// ## Parameters:
 /// * `tree` (`&tree_sitter::Tree`): File parsed with tree_sitter,
-/// * `file` (`&str`): Name of the file,
+/// * `file` (`&std::path::PathBuf`): Name of the file,
 /// * `source` (`&str`): Content of the file,
 /// * `language` (`language::Languages`): Language of the current file,
+/// * `add_path_to_scope` (`bool`): True the scope of resulting symbols should begin with the path.
 /// * `get_name_and_kind_if_interesting` (`Fn(&Node) -> Option<(Node, &SymbolKind)>`): None if not
 ///   an interesting node, else node with the name of the given node, and kind of symbol extracted.
 ///
@@ -115,9 +117,10 @@ fn walk_tree<'a, F>(
 /// * (`Result<Vec<Symbol>>`): List of symbol which matching the closure.
 pub fn extract_symbols<'a, F>(
     tree: &'a Tree,
-    file: &str,
+    file: &std::path::PathBuf,
     source: &str,
     language: &Languages,
+    add_path_to_scope: bool,
     get_name_and_kind_if_interesting: F,
 ) -> Result<Vec<Symbol>>
 where
@@ -125,7 +128,11 @@ where
 {
     let cursor = tree.walk();
     let mut symbols = Vec::new();
-    let mut scope_stack = language.scope_from_path(file);
+    let mut scope_stack = if add_path_to_scope {
+        language.scope_from_path(file)
+    } else {
+        Vec::new()
+    };
     walk_tree(
         cursor.node(),
         file,
@@ -143,7 +150,7 @@ where
 ///
 /// ## Parameters:
 /// * `tree` (`&tree_sitter::Tree`): File parsed with tree_sitter,
-/// * `file` (`&str`): Name of the file,
+/// * `file` (`&std::path::PathBuf`): Name of the file,
 /// * `source` (`&str`): Content of the file,
 /// * `changed_lines` (`&std::collections::HashSet<usize>`): Set of changed lines in the text,
 /// * `language` (`language::Languages`): Language of the current file.
@@ -153,7 +160,7 @@ where
 /// incorrect.
 pub fn extract_changed_symbols<'a>(
     tree: &'a Tree,
-    file: &str,
+    file: &PathBuf,
     source: &str,
     changed_lines: &HashSet<usize>,
     language: &Languages,
@@ -163,6 +170,7 @@ pub fn extract_changed_symbols<'a>(
         file,
         source,
         language,
+        true,
         &(|node: &Node<'a>| {
             if changed_lines.iter().any(|&changed_line| {
                 let starting_row = node.start_position().row;
