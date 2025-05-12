@@ -89,8 +89,8 @@ impl ParsableLanguage for RustLanguage {
             })
             .collect::<Vec<_>>();
         if let Some(file_stem) = file_path.file_stem().and_then(|s| s.to_str()) {
+            components.pop();
             if file_stem != "mod" && file_stem != "lib" && file_stem != "main" {
-                components.pop();
                 components.push(std::path::Component::Normal(OsStr::new(file_stem)));
             }
         }

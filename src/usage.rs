@@ -1,4 +1,5 @@
 use anyhow::{self, bail, Result};
+use std::collections::HashSet;
 use std::fs;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -9,7 +10,7 @@ use crate::{
 use tree_sitter::Node;
 use walkdir::WalkDir;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 /// Usage of a symbol in a project.
 ///
 /// ## Properties:
@@ -29,6 +30,7 @@ pub struct Usage {
 /// * `alias` (`Option<String>`): Alias of the imported symbol, if any,
 /// * `path` (`Vec<String>`): Scope and original name of the imported symbol,
 /// * `is_exported` (`bool`): True iff the field can be re-imported from the current scope.
+/// * `line` (`usize`): Line number where the symbol is named,
 pub struct Import {
     /// Alias of the imported symbol, if any.
     pub alias: Option<String>,
@@ -36,6 +38,8 @@ pub struct Import {
     pub path: Vec<String>,
     /// True iff the field can be re-imported from the current scope.
     pub is_exported: bool,
+    /// Line number where the symbol is named.
+    pub line: usize,
 }
 
 impl Import {
@@ -323,6 +327,38 @@ fn process_use_clause(
     }
 }
 
+//mod_item: $ => seq(
+//  optional($.visibility_modifier),
+//  'mod',
+//  field('name', $.identifier),
+//  choice(
+//    ';',
+//    field('body', $.declaration_list),
+//  ),
+//),
+fn process_mod_item(
+    node: Node,
+    path: &PathBuf,
+    source: &str,
+    language: &Languages,
+) -> Result<Vec<Import>> {
+    let is_exported = node
+        .child(0)
+        .map(|arg| arg.kind() == "visibility_modifier")
+        .unwrap_or(false);
+    let Some(identifier) = node.child_by_field_name("name") else {
+        bail!("field name `name` not found for a mod item")
+    };
+    let mut from_path = language.scope_from_path(path);
+    from_path.push(get_value_of_identifier(identifier, source)?);
+    Ok(vec![Import {
+        alias: None,
+        path: from_path,
+        is_exported,
+        line: node.start_position().row + 1,
+    }])
+}
+
 //  use_declaration: $ => seq(
 //     optional($.visibility_modifier),
 //     'use',
@@ -346,6 +382,7 @@ fn process_use_declaration(
         alias: None,
         path: Vec::new(),
         is_exported,
+        line: node.start_position().row + 1,
     }];
     process_use_clause(argument, path, source, language, &mut imports)?;
     Ok(imports)
@@ -360,6 +397,10 @@ pub fn extract_use_map(
 ) -> Result<()> {
     if node.kind() == "use_declaration" {
         for import in process_use_declaration(node, path, source, language)? {
+            use_map.insert(import.name(), import);
+        }
+    } else if node.kind() == "mod_item" {
+        for import in process_mod_item(node, path, source, language)? {
             use_map.insert(import.name(), import);
         }
     }
@@ -382,6 +423,7 @@ pub fn extract_identifiers(
             alias: None,
             path: Vec::new(),
             is_exported: false,
+            line: node.start_position().row + 1,
         }];
         process_scoped_identifier(node, path, source, language, &mut symbol)?;
         result.extend(symbol);
@@ -392,6 +434,7 @@ pub fn extract_identifiers(
             alias: None,
             path: Vec::new(),
             is_exported: false,
+            line: node.start_position().row + 1,
         }];
         process_identifier(node, source, &mut symbol)?;
         result.extend(symbol);
@@ -409,9 +452,9 @@ pub fn find_symbol_usages(
     project_root: &PathBuf,
     symbol: &Symbol,
     language: &Languages,
-) -> Vec<Usage> {
+) -> HashSet<Usage> {
     eprintln!("DEBUGPRINT[68]: usage.rs:367: symbol={:#?}", symbol);
-    let mut usages: Vec<Usage> = vec![];
+    let mut usages: HashSet<Usage> = HashSet::new();
 
     for entry in WalkDir::new(project_root)
         .into_iter()
@@ -446,7 +489,7 @@ pub fn find_symbol_usages(
 
         let Ok(mut used_symbols) = extract_identifiers( tree.root_node(), &path.to_path_buf(), &source_code, language) else {
             println!("Error");
-            return Vec::new();
+            return usages;
         };
         for used_symbol in used_symbols.iter_mut() {
             if let Some(import) = used_symbol.path.first().and_then(|v| use_map.get(v)) {
@@ -455,26 +498,27 @@ pub fn find_symbol_usages(
                 used_symbol.path.splice(0..0, to_add);
             }
             let symbol_path = symbol.file.as_path();
-            if symbol_path
+            let _inserted = if symbol_path
                 .canonicalize()
                 .unwrap_or(symbol_path.to_path_buf())
                 == path.canonicalize().unwrap_or(path.to_path_buf())
             {
-                println!(
-                    "{:?}: would be used from {:?} due to being from {:?}",
-                    used_symbol.name(),
-                    symbol.scope,
-                    path.to_str().unwrap_or("<invalid>"),
-                );
+                usages.insert(Usage {
+                    line: used_symbol.line,
+                    file: path.to_path_buf(),
+                })
             } else if symbol.name == used_symbol.name() {
-                println!("{:?}", use_map);
-                println!(
-                    "{:?}: {:?} would be compared to {:?}",
-                    used_symbol.name(),
-                    symbol.scope,
-                    used_symbol.path
-                );
-            }
+                if symbol.scope == used_symbol.path {
+                    usages.insert(Usage {
+                        line: used_symbol.line,
+                        file: path.to_path_buf(),
+                    })
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
         }
     }
     usages
