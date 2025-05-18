@@ -5,6 +5,8 @@ use std::slice::Iter;
 pub enum SymbolKind {
     /// Includes every named callable.
     Function,
+    /// Generic symbol when considering usage
+    Used,
 }
 impl SymbolKind {
     /// Iterates over every element of the `SymbolKind`enum.
@@ -12,6 +14,6 @@ impl SymbolKind {
     /// ## Returns:
     /// - (`Iter<'static, SymbolKind>`): Iterator over all elements of the enum.
     pub fn iter() -> Iter<'static, SymbolKind> {
-        [SymbolKind::Function].iter()
+        [SymbolKind::Function, SymbolKind::Used].iter()
     }
 }

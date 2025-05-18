@@ -1,4 +1,5 @@
 use anyhow::Result;
+use impact_scanner_derive::TestBuilder;
 use std::{
     collections::HashSet,
     fmt::{Display, Formatter},
@@ -11,29 +12,43 @@ use crate::{
     symbol_kind::SymbolKind,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, TestBuilder)]
 /// Symbol extracted from a source file.
 ///
 /// ## Properties:
-/// * `name` (`String`): Name of the symbol,
+/// * `naming` (`Option<String>`): Alias of the symbol, if any,
 /// * `line` (`usize`): Line number where the symbol is named,
-/// * `file` (`std::path::PathBuf`): Name of the file declaring the symbol,
+/// * `file` (`std::path::PathBuf`): Name of the file the symbol was found in.
 /// * `kind` (`symbol_kind::SymbolKind`): Kind of symbol (eg. function),
 /// * `is_exported` (`bool`): true iff the symbol is usable from outside of the current scope.
 /// * `scope` (`Vec<String>`): Hierarchical scope (e.g., modules, classes) where the symbol is defined.
 pub struct Symbol {
-    /// Name of the symbol.
-    pub name: String,
+    /// Alias of the imported symbol, if any.
+    pub naming: Option<String>,
     /// Line number where the symbol is named.
     pub line: usize,
-    /// Name of the file declaring the symbol.
+    /// Name of the file the symbol was found in.
     pub file: PathBuf,
+    #[builder(default = SymbolKind::Function)]
     /// Kind of symbol (eg. function).
     pub kind: SymbolKind,
     /// true iff the symbol is usable from outside of the current scope.
     pub is_exported: bool,
     /// Hierarchical scope (e.g., modules, classes) where the symbol is defined.
     pub scope: Vec<String>,
+}
+
+impl Symbol {
+    /// Name of the symbol, taking into account aliases.
+    ///
+    /// ## Returns:
+    /// * (`String`): Alias if defined, else name of the symbol.
+    pub fn name(&self) -> String {
+        self.naming.clone().unwrap_or(match self.scope.last() {
+            Some(v) => v.to_string(),
+            None => "<invalid>".to_string(),
+        })
+    }
 }
 
 impl Display for Symbol {
@@ -47,7 +62,7 @@ impl Display for Symbol {
                 "🔒private"
             },
             self.kind,
-            self.name,
+            self.name(),
             self.file.to_str().unwrap_or("<invalid>"),
             self.line,
             self.scope.join("::"),
@@ -77,7 +92,7 @@ fn walk_tree<'a, F>(
             .to_string();
         let line = name_node.start_position().row + 1;
         symbols.push(Symbol {
-            name,
+            naming: Some(name),
             line,
             file: file.clone(),
             kind: *kind,

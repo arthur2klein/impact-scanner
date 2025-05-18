@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::symbol_kind::SymbolKind;
 use crate::{
     language::{parsable_language::ParsableLanguage, Languages},
     symbol::Symbol,
@@ -23,41 +24,6 @@ pub struct Usage {
     pub file: PathBuf,
 }
 
-#[derive(Clone, Debug)]
-/// One import, or equivalent for the current language.
-///
-/// ## Properties:
-/// * `alias` (`Option<String>`): Alias of the imported symbol, if any,
-/// * `path` (`Vec<String>`): Scope and original name of the imported symbol,
-/// * `is_exported` (`bool`): True iff the field can be re-imported from the current scope.
-/// * `line` (`usize`): Line number where the symbol is named,
-pub struct Import {
-    /// Alias of the imported symbol, if any.
-    pub alias: Option<String>,
-    /// Scope and original name of the imported symbol.
-    pub path: Vec<String>,
-    /// True iff the field can be re-imported from the current scope.
-    pub is_exported: bool,
-    /// Line number where the symbol is named.
-    pub line: usize,
-}
-
-impl Import {
-    /// Name of the imported symbol, taking into account aliases.
-    ///
-    /// ## Returns:
-    /// * (`String`): Name of the imported symbol.
-    fn name(&self) -> String {
-        self.alias.clone().unwrap_or(
-            self.path
-                .iter()
-                .last()
-                .map(|v| v.to_string())
-                .unwrap_or_default(),
-        )
-    }
-}
-
 //generic_type_with_turbofish: $ => seq(
 //  field('type', choice(
 //    $._type_identifier,
@@ -71,14 +37,16 @@ fn process_generic_type_with_turbofish(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     let Some(type_node) = node.child_by_field_name("type") else {
         bail!("field name `type` not found for a generic type with turbofish")
     };
     match type_node.kind() {
-        "_type_identifier" => process_identifier(node, source, imports),
-        "scoped_identifier" => process_scoped_identifier(node, path, source, language, imports),
+        "_type_identifier" => process_identifier(node, source, imported_symbols),
+        "scoped_identifier" => {
+            process_scoped_identifier(node, path, source, language, imported_symbols)
+        }
         _ => bail!("type node of a generic type with turbofish has invalid kind"),
     }
 }
@@ -97,23 +65,27 @@ fn process_scoped_identifier(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     if let Some(path_node) = node.child_by_field_name("path") {
         match path_node.kind() {
             "self" => (),
-            "metavariable" => process_metavariable(path_node, source, imports)?,
-            "super" => process_super(path, language, imports)?,
-            "crate" => process_crate(imports)?,
-            "identifier" => process_identifier(path_node, source, imports)?,
+            "metavariable" => process_metavariable(path_node, source, imported_symbols)?,
+            "super" => process_super(path, language, imported_symbols)?,
+            "crate" => process_crate(imported_symbols)?,
+            "identifier" => process_identifier(path_node, source, imported_symbols)?,
             "scoped_identifier" => {
-                process_scoped_identifier(path_node, path, source, language, imports)?
+                process_scoped_identifier(path_node, path, source, language, imported_symbols)?
             }
-            "_reserved_identifier" => process_identifier(path_node, source, imports)?,
+            "_reserved_identifier" => process_identifier(path_node, source, imported_symbols)?,
             "bracketed_type" => (),
-            "generic_type" => {
-                process_generic_type_with_turbofish(path_node, path, source, language, imports)?
-            }
+            "generic_type" => process_generic_type_with_turbofish(
+                path_node,
+                path,
+                source,
+                language,
+                imported_symbols,
+            )?,
             _ => bail!("path node of a scoped identifier has invalid kind"),
         }
     }
@@ -121,35 +93,43 @@ fn process_scoped_identifier(
         bail!("field name `name` not found for a scoped identifier")
     };
     match name_node.kind() {
-        "identifier" => process_identifier(name_node, source, imports),
-        "super" => process_super(path, language, imports),
+        "identifier" => process_identifier(name_node, source, imported_symbols),
+        "super" => process_super(path, language, imported_symbols),
         _ => bail!("name node of a scoped identifier has invalid kind"),
     }
 }
 
 //crate: _ => 'crate',
-fn process_crate(imports: &mut Vec<Import>) -> Result<()> {
-    for import in imports {
-        import.path.push("crate".to_string());
+fn process_crate(imported_symbols: &mut Vec<Symbol>) -> Result<()> {
+    for imported_symbol in imported_symbols {
+        imported_symbol.scope.push("crate".to_string());
     }
     Ok(())
 }
 
 //super: _ => 'super',
-fn process_super(path: &PathBuf, language: &Languages, imports: &mut Vec<Import>) -> Result<()> {
+fn process_super(
+    path: &PathBuf,
+    language: &Languages,
+    imported_symbols: &mut Vec<Symbol>,
+) -> Result<()> {
     let mut from_path = language.scope_from_path(path);
     from_path.pop();
-    for import in imports {
-        import.path.extend(from_path.clone());
+    for imported_symbol in imported_symbols {
+        imported_symbol.scope.extend(from_path.clone());
     }
     Ok(())
 }
 
 //  metavariable: _ => /\$[a-zA-Z_]\w*/,
-fn process_metavariable(node: Node, source: &str, imports: &mut Vec<Import>) -> Result<()> {
+fn process_metavariable(
+    node: Node,
+    source: &str,
+    imported_symbols: &mut Vec<Symbol>,
+) -> Result<()> {
     let value = node.utf8_text(source.as_bytes()).map(|v| v.to_string())?;
-    for import in imports.iter_mut() {
-        import.path.push(value.clone());
+    for imported_symbol in imported_symbols.iter_mut() {
+        imported_symbol.scope.push(value.clone());
     }
     Ok(())
 }
@@ -169,25 +149,27 @@ fn process_path(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     match node.kind() {
         "self" => Ok(()),
-        "metavariable" => process_metavariable(node, source, imports),
-        "super" => process_super(path, language, imports),
-        "crate" => process_crate(imports),
-        "identifier" => process_identifier(node, source, imports),
-        "scoped_identifier" => process_scoped_identifier(node, path, source, language, imports),
-        "_reserved_identifier" => process_identifier(node, source, imports),
+        "metavariable" => process_metavariable(node, source, imported_symbols),
+        "super" => process_super(path, language, imported_symbols),
+        "crate" => process_crate(imported_symbols),
+        "identifier" => process_identifier(node, source, imported_symbols),
+        "scoped_identifier" => {
+            process_scoped_identifier(node, path, source, language, imported_symbols)
+        }
+        "_reserved_identifier" => process_identifier(node, source, imported_symbols),
         _ => bail!("path has invalid kind"),
     }
 }
 
 //  identifier: _ => /(r#)?[_\p{XID_Start}][_\p{XID_Continue}]*/,
-fn process_identifier(node: Node, source: &str, imports: &mut Vec<Import>) -> Result<()> {
+fn process_identifier(node: Node, source: &str, imported_symbols: &mut Vec<Symbol>) -> Result<()> {
     let value = get_value_of_identifier(node, source)?;
-    for import in imports {
-        import.path.push(value.clone());
+    for imported_symbol in imported_symbols {
+        imported_symbol.scope.push(value.clone());
     }
     Ok(())
 }
@@ -207,16 +189,16 @@ fn process_use_wildcard(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     if node.child_count() > 1 {
         let Some(path_node) = node.child(0) else {
             bail!("can not get the first child of a use wildcard with more than one child")
         };
-        process_path(path_node, path, source, language, imports)?;
+        process_path(path_node, path, source, language, imported_symbols)?;
     }
-    for import in imports.iter_mut() {
-        import.path.push("*".to_string());
+    for imported_symbol in imported_symbols.iter_mut() {
+        imported_symbol.scope.push("*".to_string());
     }
     Ok(())
 }
@@ -231,19 +213,19 @@ fn process_use_as_clause(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     let Some(alias_node) = node.child_by_field_name("alias") else {
         bail!("field name `alias` not found for a use as clause")
     };
     let alias = get_value_of_identifier(alias_node, source)?;
-    for import in imports.iter_mut() {
-        import.alias = Some(alias.clone());
+    for imported_symbol in imported_symbols.iter_mut() {
+        imported_symbol.naming = Some(alias.clone());
     }
     let Some(path_node) = node.child_by_field_name("path") else {
         bail!("field name `path` not found for a use as clause")
     };
-    process_path(path_node, path, source, language, imports)?;
+    process_path(path_node, path, source, language, imported_symbols)?;
     Ok(())
 }
 
@@ -257,15 +239,15 @@ fn process_scoped_use_list(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     if let Some(path_node) = node.child_by_field_name("path") {
-        process_path(path_node, path, source, language, imports)?;
+        process_path(path_node, path, source, language, imported_symbols)?;
     }
     let Some(list) = node.child_by_field_name("list") else {
         bail!("field name `list` not found for a scoped use list")
     };
-    process_use_list(list, path, source, language, imports)
+    process_use_list(list, path, source, language, imported_symbols)
 }
 
 //   use_list: $ => seq(
@@ -281,17 +263,17 @@ fn process_use_list(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     let mut cursor = node.walk();
-    let cloned: Vec<Import> = imports.iter().cloned().collect();
-    imports.clear();
+    let cloned: Vec<Symbol> = imported_symbols.iter().cloned().collect();
+    imported_symbols.clear();
     for child in node.children(&mut cursor) {
         let kind = child.kind();
         if kind != "{" && kind != "}" && kind != "," {
-            let mut imports_part = cloned.iter().cloned().collect();
-            process_use_clause(child, path, source, language, &mut imports_part)?;
-            imports.extend(imports_part);
+            let mut imported_symbols_part = cloned.iter().cloned().collect();
+            process_use_clause(child, path, source, language, &mut imported_symbols_part)?;
+            imported_symbols.extend(imported_symbols_part);
         }
     }
     Ok(())
@@ -309,20 +291,24 @@ fn process_use_clause(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-    imports: &mut Vec<Import>,
+    imported_symbols: &mut Vec<Symbol>,
 ) -> Result<()> {
     match node.kind() {
         "self" => Ok(()),
-        "metavariable" => process_metavariable(node, source, imports),
-        "super" => process_super(path, language, imports),
-        "crate" => process_crate(imports),
-        "identifier" => process_identifier(node, source, imports),
-        "scoped_identifier" => process_scoped_identifier(node, path, source, language, imports),
-        "_reserved_identifier" => process_identifier(node, source, imports),
-        "use_as_clause" => process_use_as_clause(node, path, source, language, imports),
-        "use_list" => process_use_list(node, path, source, language, imports),
-        "scoped_use_list" => process_scoped_use_list(node, path, source, language, imports),
-        "use_wildcard" => process_use_wildcard(node, path, source, language, imports),
+        "metavariable" => process_metavariable(node, source, imported_symbols),
+        "super" => process_super(path, language, imported_symbols),
+        "crate" => process_crate(imported_symbols),
+        "identifier" => process_identifier(node, source, imported_symbols),
+        "scoped_identifier" => {
+            process_scoped_identifier(node, path, source, language, imported_symbols)
+        }
+        "_reserved_identifier" => process_identifier(node, source, imported_symbols),
+        "use_as_clause" => process_use_as_clause(node, path, source, language, imported_symbols),
+        "use_list" => process_use_list(node, path, source, language, imported_symbols),
+        "scoped_use_list" => {
+            process_scoped_use_list(node, path, source, language, imported_symbols)
+        }
+        "use_wildcard" => process_use_wildcard(node, path, source, language, imported_symbols),
         _ => bail!("use clause has invalid kind {:?}", node.kind()),
     }
 }
@@ -341,7 +327,7 @@ fn process_mod_item(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-) -> Result<Vec<Import>> {
+) -> Result<Vec<Symbol>> {
     let is_exported = node
         .child(0)
         .map(|arg| arg.kind() == "visibility_modifier")
@@ -351,9 +337,11 @@ fn process_mod_item(
     };
     let mut from_path = language.scope_from_path(path);
     from_path.push(get_value_of_identifier(identifier, source)?);
-    Ok(vec![Import {
-        alias: None,
-        path: from_path,
+    Ok(vec![Symbol {
+        naming: None,
+        file: path.to_path_buf(),
+        kind: SymbolKind::Used,
+        scope: from_path,
         is_exported,
         line: node.start_position().row + 1,
     }])
@@ -370,7 +358,7 @@ fn process_use_declaration(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-) -> Result<Vec<Import>> {
+) -> Result<Vec<Symbol>> {
     let is_exported = node
         .child(0)
         .map(|arg| arg.kind() == "visibility_modifier")
@@ -378,30 +366,32 @@ fn process_use_declaration(
     let Some(argument) = node.child_by_field_name("argument") else {
         bail!("field name `argument` not found for a use declaration")
     };
-    let mut imports = vec![Import {
-        alias: None,
-        path: Vec::new(),
+    let mut imported_symbols = vec![Symbol {
+        naming: None,
+        file: path.to_path_buf(),
+        kind: SymbolKind::Used,
+        scope: Vec::new(),
         is_exported,
         line: node.start_position().row + 1,
     }];
-    process_use_clause(argument, path, source, language, &mut imports)?;
-    Ok(imports)
+    process_use_clause(argument, path, source, language, &mut imported_symbols)?;
+    Ok(imported_symbols)
 }
 
 pub fn extract_use_map(
     node: Node,
     path: &PathBuf,
     source: &str,
-    use_map: &mut HashMap<String, Import>,
+    use_map: &mut HashMap<String, Symbol>,
     language: &Languages,
 ) -> Result<()> {
     if node.kind() == "use_declaration" {
-        for import in process_use_declaration(node, path, source, language)? {
-            use_map.insert(import.name(), import);
+        for imported_symbol in process_use_declaration(node, path, source, language)? {
+            use_map.insert(imported_symbol.name(), imported_symbol);
         }
     } else if node.kind() == "mod_item" {
-        for import in process_mod_item(node, path, source, language)? {
-            use_map.insert(import.name(), import);
+        for imported_symbol in process_mod_item(node, path, source, language)? {
+            use_map.insert(imported_symbol.name(), imported_symbol);
         }
     }
     for child in node.named_children(&mut node.walk()) {
@@ -415,13 +405,15 @@ pub fn extract_identifiers(
     path: &PathBuf,
     source: &str,
     language: &Languages,
-) -> Result<Vec<Import>> {
+) -> Result<Vec<Symbol>> {
     let mut result = Vec::new();
     let mut processed = false;
     if node.kind() == "scoped_identifier" {
-        let mut symbol = vec![Import {
-            alias: None,
-            path: Vec::new(),
+        let mut symbol = vec![Symbol {
+            naming: None,
+            file: path.to_path_buf(),
+            kind: SymbolKind::Used,
+            scope: Vec::new(),
             is_exported: false,
             line: node.start_position().row + 1,
         }];
@@ -430,9 +422,11 @@ pub fn extract_identifiers(
         processed = true;
     }
     if node.kind() == "identifier" {
-        let mut symbol = vec![Import {
-            alias: None,
-            path: Vec::new(),
+        let mut symbol = vec![Symbol {
+            naming: None,
+            file: path.to_path_buf(),
+            kind: SymbolKind::Used,
+            scope: Vec::new(),
             is_exported: false,
             line: node.start_position().row + 1,
         }];
@@ -492,10 +486,10 @@ pub fn find_symbol_usages(
             return usages;
         };
         for used_symbol in used_symbols.iter_mut() {
-            if let Some(import) = used_symbol.path.first().and_then(|v| use_map.get(v)) {
-                let mut to_add = import.path.clone();
+            if let Some(imported_symbol) = used_symbol.scope.first().and_then(|v| use_map.get(v)) {
+                let mut to_add = imported_symbol.scope.clone();
                 to_add.pop();
-                used_symbol.path.splice(0..0, to_add);
+                used_symbol.scope.splice(0..0, to_add);
             }
             let symbol_path = symbol.file.as_path();
             let _inserted = if symbol_path
@@ -507,8 +501,8 @@ pub fn find_symbol_usages(
                     line: used_symbol.line,
                     file: path.to_path_buf(),
                 })
-            } else if symbol.name == used_symbol.name() {
-                if symbol.scope == used_symbol.path {
+            } else if symbol.name() == used_symbol.name() {
+                if symbol.scope == used_symbol.scope {
                     usages.insert(Usage {
                         line: used_symbol.line,
                         file: path.to_path_buf(),

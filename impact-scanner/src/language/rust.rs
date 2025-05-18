@@ -62,17 +62,9 @@ impl ParsableLanguage for RustLanguage {
         &self,
         node: &Node<'a>,
     ) -> Option<(Node<'a>, &'static SymbolKind)> {
-        for kind in SymbolKind::iter() {
-            let expected_field = match kind {
-                SymbolKind::Function => "name".to_string(),
-            };
-            let has_kind = match kind {
-                SymbolKind::Function => "function_item" == node.kind(),
-            };
-            if has_kind {
-                if let Some(name_node) = node.child_by_field_name(expected_field) {
-                    return Some((name_node, kind));
-                }
+        if "function_item" == node.kind() {
+            if let Some(name_node) = node.child_by_field_name("name".to_string()) {
+                return Some((name_node, &SymbolKind::Function));
             }
         }
         None
